@@ -1,1 +1,0 @@
-python main.py --real --key d1477fa87622262ee8a8eea1dec5c979
