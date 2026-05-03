@@ -1,0 +1,5 @@
+output*
+results.txt
+.venv
+
+core/__pycache__
