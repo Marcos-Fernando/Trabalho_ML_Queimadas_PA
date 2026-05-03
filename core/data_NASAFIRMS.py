@@ -68,6 +68,11 @@ def _firms_real(gdf, api_key, out_file):
     df_all["acq_date"] = pd.to_datetime(df_all["acq_date"])
     print(f"  Total focos brutos: {len(df_all):,}")
 
+    # Salvando dados brutos nte da limpeza
+    bruto_file = out_file.parent / "firms_bruto.csv"
+    df_all.to_csv(bruto_file, index=False)
+    print(f"  Bruto salvo: {bruto_file}")
+
     # ==== Limpeza dos focos ====
     # Dois filtros aplicados: 
     # Confiança: o VIIRS classifica cada detecção em "l" (low), "n" (nominal) ou "h" (high).
@@ -75,8 +80,13 @@ def _firms_real(gdf, api_key, out_file):
     # FRP (Fire Radiative Power): mede a energia irradiada pelo fogo em megawatts. 
     # Queimadas vegetais têm FRP intermitente e raramente ultrapassam 500 MW. Acima disso pode ser calor industrial.
     df_all = df_all[df_all["confidence"] != "l"]
-    df_all = df_all[df_all["frp"] <= 500]
-    print(f"  Focos após limpeza (confiança + FRP): {len(df_all):,}")
+    # df_all = df_all[df_all["frp"] <= 500]
+    print(f"  Focos após limpeza (confiança): {len(df_all):,}")
+
+    #Salva os dados depois da limpeza
+    limpo_file = out_file.parent / "firms_limpo.csv"
+    df_all.to_csv(limpo_file, index=False)
+    print(f"  Limpo salvo: {limpo_file}")
 
     # Spatial join e agregação mensal
     # O FIRMS retorna coordenadas brutas — cada foco é um ponto com latitude e longitude. 
