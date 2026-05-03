@@ -105,9 +105,9 @@ def plot_mapa_geral(df, model, feature_names, gdf, out, calibrar_perfis=False, b
 
     cores = {
         "Low"     : "#2ecc71",
-        "Moderate": "#f39c12",
-        "High"    : "#e74c3c",
-        "Critical": "#8e44ad",
+        "Moderate": "#fdfd96",
+        "High"    : "#f39c12",
+        "Critical": "#e74c3c",
     }
 
     fig, ax = plt.subplots(figsize=(12, 10))
