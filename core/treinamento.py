@@ -88,7 +88,7 @@ def train_models(X_train, y_train, X_val, y_val):
 
     # XGBoost 
     # learning_rate 0.05 - aprendizado lento e mais estavel / subsample e colsample 0.8 = usar 80% das linhas e features por aŕvores / early_stopping 30 - para o treino se auc não melhorar em 30 rodadas
-    xgb_model = xgb.XGBClassifier( n_estimators=500, max_depth=5, learning_rate=0.05, subsample=0.8, colsample_bytree=0.8, scale_pos_weight=scale, eval_metric="auc", early_stopping_rounds=30, random_state=42, verbosity=0)
+    xgb_model = xgb.XGBClassifier( n_estimators=500, max_depth=5, learning_rate=0.05, subsample=0.8, colsample_bytree=0.8, scale_pos_weight=scale, eval_metric="aucpr", early_stopping_rounds=30, random_state=42, verbosity=0)
     xgb_model.fit(X_train, y_train, eval_set=[(X_val, y_val)], verbose=False)
 
     # Calibração de probabilidade — corrige a compressão causada pelo desbalanceamento
@@ -142,6 +142,15 @@ def avaliar_com_tscv(df: pd.DataFrame, n_splits: int = 3):
         data_fim = df["data"].iloc[idx_tr[-1]].date()
         data_val = df["data"].iloc[idx_val[-1]].date()
         print(f"  Fold {fold}: treino {data_ini}-{data_fim} | val até {data_val}")
+
+        # ===== Verifica separação por meses completos ====
+        ultimo_treino  = df["data"].iloc[idx_tr[-1]].to_period("M")
+        primeiro_val   = df["data"].iloc[idx_val[0]].to_period("M")
+        assert ultimo_treino != primeiro_val, (
+            f"Fold {fold}: vazamento detectado — treino e validação "
+            f"compartilham o mês {ultimo_treino}"
+        )
+        # 
 
         scale = (y_tr == 0).sum() / (y_tr == 1).sum()
         modelo = xgb.XGBClassifier( n_estimators=300, max_depth=5, scale_pos_weight=scale, eval_metric="auc", random_state=42, verbosity=0)
