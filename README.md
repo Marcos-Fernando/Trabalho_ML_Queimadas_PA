@@ -80,9 +80,10 @@ Todos os arquivos são salvos na pasta `output/` criada automaticamente:
 | Arquivo | Descrição |
 |---|---|
 | `nasa_power_para.csv` | Variáveis climáticas mensais por município |
-| `firms_mensal.csv` | Contagem mensal de focos por município (após limpeza) |
+| `firms_bruto.csv` | Contagem mensal de focos por município (antes da limpeza) |
+| `firms_limpo.csv` | Contagem mensal de focos por município (após limpeza) |
+| `firms_mensal.csv` | Contagem mensal de focos por município (após limpeza geral) |
 | `mapa_risco_electre_trib.png` | Mapa de risco classificado pelo ELECTRE Tri-B |
-| `feature_importance_*.png` | Importância das features do melhor modelo |
 
 ---
 
