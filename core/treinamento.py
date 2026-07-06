@@ -75,20 +75,20 @@ def train_models(X_train, y_train, X_val, y_val):
     scale = (y_train == 0).sum() / (y_train == 1).sum()
 
     # Random Forest 
-    rf = RandomForestClassifier(n_estimators=300, max_depth=8, min_samples_leaf=5, class_weight="balanced", random_state=42, n_jobs=-1)
+    rf = RandomForestClassifier(n_estimators=300, max_depth=15, min_samples_leaf=6, class_weight="balanced", random_state=42, n_jobs=-1)
     rf.fit(X_train, y_train)
     auc_rf = roc_auc_score(y_val, rf.predict_proba(X_val)[:, 1])
     print(f"  Random Forest  AUC-ROC (val): {auc_rf:.3f}")
 
     # Extra Trees 
-    et = ExtraTreesClassifier(n_estimators=300, max_depth=10, min_samples_leaf=3, class_weight="balanced", random_state=42, n_jobs=-1)
+    et = ExtraTreesClassifier(n_estimators=300, max_depth=25, min_samples_leaf=3, class_weight="balanced", random_state=42, n_jobs=-1)
     et.fit(X_train, y_train)
     auc_et = roc_auc_score(y_val, et.predict_proba(X_val)[:, 1])
     print(f"  Extra Trees    AUC-ROC (val): {auc_et:.3f}")
 
     # XGBoost 
     # learning_rate 0.05 - aprendizado lento e mais estavel / subsample e colsample 0.8 = usar 80% das linhas e features por aŕvores / early_stopping 30 - para o treino se auc não melhorar em 30 rodadas
-    xgb_model = xgb.XGBClassifier( n_estimators=500, max_depth=5, learning_rate=0.05, subsample=0.8, colsample_bytree=0.8, scale_pos_weight=scale, eval_metric="aucpr", early_stopping_rounds=30, random_state=42, verbosity=0)
+    xgb_model = xgb.XGBClassifier( n_estimators=40, max_depth=5, learning_rate=0.05, subsample=0.8, colsample_bytree=0.8, scale_pos_weight=scale, eval_metric="aucpr", early_stopping_rounds=30, random_state=42, verbosity=0)
     xgb_model.fit(X_train, y_train, eval_set=[(X_val, y_val)], verbose=False)
 
     # Calibração de probabilidade — corrige a compressão causada pelo desbalanceamento
@@ -122,35 +122,50 @@ def train_models(X_train, y_train, X_val, y_val):
 def avaliar_com_tscv(df: pd.DataFrame, n_splits: int = 3):
     """
     Avaliação com validação cruzada temporal.
+
+    IMPORTANTE: o TimeSeriesSplit é aplicado sobre os MESES ÚNICOS,
+    não sobre as linhas do df. Como cada mês tem ~144 linhas (uma por
+    município), rodar o split direto sobre as linhas pode cortar no
+    meio de um bloco mensal, misturando municípios do mesmo mês entre
+    treino e validação. Fazendo o split sobre os meses e só depois
+    mapeando de volta para as linhas, garantimos que cada fold
+    respeita fronteiras de mês inteiro.
     """
-    # Ordena cronologicamente e indexa por data
+    # Ordena cronologicamente
     df = df.sort_values("data").reset_index(drop=True)
 
     feats_disponiveis = [f for f in FEATURES if f in df.columns]
-    X = df[feats_disponiveis]
-    y = df["target"]
 
-    # O TimeSeriesSplit divide os dados em folds mantendo a ordem cronológica — cada fold tem mais dados de treino que o anterior, e a validação sempre está no futuro em relação ao treino.
+    # Lista de meses únicos, ordenada
+    meses = df["data"].sort_values().unique()
+
+    # O split agora é feito sobre o índice dos MESES (ex: 0..N meses), não sobre as linhas
     tscv = TimeSeriesSplit(n_splits=n_splits)
     aucs = []
 
-    for fold, (idx_tr, idx_val) in enumerate(tscv.split(X), 1):
-        X_tr, y_tr   = X.iloc[idx_tr],  y.iloc[idx_tr]
-        X_val, y_val = X.iloc[idx_val], y.iloc[idx_val]
+    for fold, (idx_meses_tr, idx_meses_val) in enumerate(tscv.split(meses), 1):
+        meses_tr  = meses[idx_meses_tr]
+        meses_val = meses[idx_meses_val]
 
-        data_ini = df["data"].iloc[idx_tr[0]].date()
-        data_fim = df["data"].iloc[idx_tr[-1]].date()
-        data_val = df["data"].iloc[idx_val[-1]].date()
+        # Mapeia os meses de volta para as linhas do df (todos os municípios daquele mês)
+        mask_tr  = df["data"].isin(meses_tr)
+        mask_val = df["data"].isin(meses_val)
+
+        X_tr, y_tr   = df.loc[mask_tr, feats_disponiveis],  df.loc[mask_tr, "target"]
+        X_val, y_val = df.loc[mask_val, feats_disponiveis], df.loc[mask_val, "target"]
+
+        data_ini = pd.Timestamp(meses_tr[0]).date()
+        data_fim = pd.Timestamp(meses_tr[-1]).date()
+        data_val = pd.Timestamp(meses_val[-1]).date()
         print(f"  Fold {fold}: treino {data_ini}-{data_fim} | val até {data_val}")
 
         # ===== Verifica separação por meses completos ====
-        ultimo_treino  = df["data"].iloc[idx_tr[-1]].to_period("M")
-        primeiro_val   = df["data"].iloc[idx_val[0]].to_period("M")
+        ultimo_treino = pd.Timestamp(meses_tr[-1]).to_period("M")
+        primeiro_val  = pd.Timestamp(meses_val[0]).to_period("M")
         assert ultimo_treino != primeiro_val, (
             f"Fold {fold}: vazamento detectado — treino e validação "
             f"compartilham o mês {ultimo_treino}"
         )
-        # 
 
         scale = (y_tr == 0).sum() / (y_tr == 1).sum()
         modelo = xgb.XGBClassifier( n_estimators=300, max_depth=5, scale_pos_weight=scale, eval_metric="auc", random_state=42, verbosity=0)

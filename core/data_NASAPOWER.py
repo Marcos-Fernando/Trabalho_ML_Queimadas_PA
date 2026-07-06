@@ -29,7 +29,7 @@ NASA_POWER_VARS = [
 # O NASA POWER tem um atraso de processamento — dados dos últimos meses ainda não estão disponíveis. 
 # Essa função subtrai 6 meses da data atual para garantir que só peça dados que já existem. 
 # O while month <= 0 trata a virada de ano: se hoje é março (mês 3) e subtrai 6, o resultado seria mês -3, que não existe — o loop corrige para outubro do ano anterior.
-def safe_end_date(lag_months: int = 6) -> str:
+def safe_end_date(lag_months: int = 12) -> str:
     """
     Retorna o ano seguro para o endpoint monthly do NASA POWER.
     Formato: "YYYY"
@@ -115,7 +115,7 @@ def get_nasa_power(lat: float, lon: float, start: str, end: str, retries: int = 
 # ==== Coleta em lote com checkpoint ====
 def collect_nasa_power(gdf: gpd.GeoDataFrame, out, start: str = "2020", end: str = None) -> pd.DataFrame:
     if end is None:
-        end = safe_end_date(lag_months=6)
+        end = safe_end_date(lag_months=12)
         print(f"  Data fim calculada: {end}")
     out_file  = out / "nasa_power_para.csv"
     ckpt_file = out / "nasa_power_para_checkpoint.csv"
