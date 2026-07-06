@@ -22,7 +22,11 @@ Execução:
 
 import warnings
 import numpy as np
+import shap
+import matplotlib.pyplot as plt
+
 from pathlib import Path
+from sklearn.metrics import PrecisionRecallDisplay
 from sklearn.metrics import fbeta_score, classification_report, roc_auc_score, precision_recall_curve
 
 from core.data_IBGE import get_municipios_para
@@ -72,7 +76,9 @@ def main(firms_api_key: str = "SUA_KEY_AQUI",
     # O split_temporal() e train_models() continuam para o modelo final
     print("\n Passo 5b — Treino Final")
     (X_tr, y_tr), (X_val, y_val), (X_te, y_te), feats = split_temporal(df)
-    rf, _, best = train_models(X_tr, y_tr, X_val, y_val)
+    
+    # Desempacota todos os 4 valores retornados
+    rf, xgb_model, et, best = train_models(X_tr, y_tr, X_val, y_val)
 
     beta = 2  # recall vale 2x mais que precision
 
@@ -94,12 +100,63 @@ def main(firms_api_key: str = "SUA_KEY_AQUI",
 
     # 7. Visualizações
     print("\n Gerando visualizações...")
-    name_model = "Random Forest" if best is rf else "XGBoost"
+    if best is rf:
+        name_model = "Random Forest"
+    elif best is et:
+        name_model = "Extra Trees"
+    else:
+        name_model = "XGBoost"
+
     plot_feature_importance(best, feats, name_model, out=OUT)
-    plot_mapa_geral(df, best, feats, gdf, out=OUT,calibrar_perfis=True)
+    plot_mapa_geral(df, best, feats, gdf, out=OUT, calibrar_perfis=True)
 
-    print(f"\n Concluído — resultados em: {OUT}/")
+    # Curva Precision-Recall
+    fig, ax = plt.subplots(figsize=(7, 5))
+    for nome, modelo in [("Random Forest", rf),
+                         ("Extra Trees", et),
+                         ("XGBoost", xgb_model)]:
+        PrecisionRecallDisplay.from_estimator(
+            modelo, X_val, y_val, name=nome, ax=ax
+        )
+    ax.axvline(x=best_threshold, color="gray", linestyle="--",
+               alpha=0.5, label=f"τ={best_threshold:.3f}")
+    ax.set_title("Curva Precision-Recall — Validação (2023)")
+    plt.tight_layout()
+    plt.savefig(OUT / "precision_recall_curve.png", dpi=150, bbox_inches="tight")
+    plt.close()
 
+    # SHAP
+    try:
+        modelo_base = xgb_model.calibrated_classifiers_[0].estimator
+    except AttributeError:
+        modelo_base = xgb_model
+
+    import tempfile
+    import os
+
+    # Salva e recarrega o modelo para normalizar o base_score
+    booster = modelo_base.get_booster()
+
+    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+        tmp_path = f.name
+
+    booster.save_model(tmp_path)
+    booster.load_model(tmp_path)
+    os.unlink(tmp_path)
+
+    explainer   = shap.TreeExplainer(booster)
+    shap_values = explainer.shap_values(X_te)
+
+    shap.summary_plot(shap_values, X_te,
+                      feature_names=feats, show=False)
+    plt.savefig(OUT / "shap_summary.png", dpi=150, bbox_inches="tight")
+    plt.close()
+
+    shap.summary_plot(shap_values, X_te,
+                      feature_names=feats, plot_type="dot", show=False)
+    plt.savefig(OUT / "shap_beeswarm.png", dpi=150, bbox_inches="tight")
+    plt.close()
+    print("  SHAP salvo")
     return best, df, feats
 
 
